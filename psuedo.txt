@@ -1,0 +1,108 @@
+IMPORT random
+IMPORT TERRAIN_DATA from config
+
+CLASS Faction:
+
+    # --- INITIALIZATION ---
+    FUNCTION __init__(code, name, color, description, leader, focus_territory):
+        SET self.code = code                        # Short ID like "A" for map grids
+        SET self.name = name                        # Full empire name
+        SET self.color = color                      # ANSI color code
+        SET self.description = description
+        SET self.leader = leader                    # Dict or string, e.g., {"name": "Kael", "trait": "Warlord"}
+        SET self.focus_territory = focus_territory  # Preferred biome symbol (e.g., "^" for Mountains)
+
+        SET self.population = 100
+        SET self.resources = {"gold": 50, "food": 50}
+        SET self.territory = EMPTY SET              # Stores (row, col) coordinate tuples
+        SET self.capital = None                     # (row, col) of home base
+        SET self.diplomacy = EMPTY DICT             # Maps other_faction_code -> "Ally" | "Neutral" | "War"
+
+
+    # --- STATUS CHECKS ---
+    FUNCTION is_alive():
+        RETURN (LENGTH of self.territory > 0) AND (self.population > 0)
+
+
+    # --- TERRITORY MANAGEMENT ---
+    FUNCTION claim_tile(coord):
+        ADD coord TO self.territory
+
+    FUNCTION lose_tile(coord):
+        REMOVE coord FROM self.territory
+        IF coord == self.capital AND self.is_alive():
+            SET self.capital = PICK random coordinate from self.territory
+            # Optional: trigger morale/gold penalty for losing capital
+
+
+    # --- ECONOMY & SEASONAL UPDATES ---
+    FUNCTION update_economy(season, world_map):
+        IF NOT self.is_alive():
+            SET self.population = 0
+            RETURN
+
+        SET food_income = 0
+        SET gold_income = 0
+
+        FOR EACH (row, col) IN self.territory:
+            SET biome = world_map.get_terrain(row, col)
+            ADD TERRAIN_DATA[biome].food TO food_income
+            ADD TERRAIN_DATA[biome].gold TO gold_income
+
+            # Bonus yield if this tile matches the faction's favored terrain
+            IF biome == self.focus_territory:
+                ADD 2 TO food_income
+                ADD 2 TO gold_income
+
+        # Apply seasonal modifiers
+        IF season == "Winter":
+            MULTIPLY food_income BY 0.5
+        ELSE IF season == "Autumn":
+            MULTIPLY food_income BY 1.3
+
+        # Update stockpiles & population
+        ADD gold_income TO self.resources["gold"]
+        SET food_needed = self.population * 0.1
+        SET net_food = food_income - food_needed
+
+        IF net_food >= 0:
+            ADD net_food TO self.resources["food"]
+            INCREASE self.population BY (net_food * 0.5)
+        ELSE:
+            # Eat from stored food before starving
+            ADD net_food TO self.resources["food"]
+            IF self.resources["food"] < 0:
+                DECREASE self.population BY ABS(self.resources["food"]) * 2
+                SET self.resources["food"] = 0
+
+
+    # --- COMBAT POWER CALCULATION ---
+    FUNCTION calculate_combat_strength(biome, is_attacking):
+        SET base_strength = self.population * RANDOM_FLOAT(0.8, 1.2)
+
+        # Home-turf advantage in preferred biome
+        IF biome == self.focus_territory:
+            MULTIPLY base_strength BY 1.25
+
+        # Defender terrain bonus (e.g., Mountains give +50%)
+        IF NOT is_attacking:
+            MULTIPLY base_strength BY TERRAIN_DATA[biome].defense_bonus
+
+        # Leader trait bonus (if you add traits later)
+        IF self.leader.trait == "Warlord" AND is_attacking:
+            MULTIPLY base_strength BY 1.15
+
+        RETURN base_strength
+
+
+    # --- DIPLOMACY HELPERS ---
+    FUNCTION get_relation(other_code):
+        RETURN self.diplomacy.get(other_code, "Neutral")
+
+    FUNCTION set_relation(other_code, status):
+        SET self.diplomacy[other_code] = status
+
+
+    # --- DISPLAY ---
+    FUNCTION __str__():
+        RETURN formatted multi-line summary of name, leader, pop, resources, tile count, and diplomacy
