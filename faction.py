@@ -38,6 +38,7 @@ class Faction:
             return True
         return False
 
+    
     def update_economy(self, season, world_map):
         if not self.is_alive():
             self.population = 0
@@ -94,3 +95,23 @@ class Faction:
                 starvation = abs(self.resources["food"]) * 2
                 self.population = max(0, self.population - starvation)
                 self.resources["food"] = 0
+
+    def calculate_combat_strength(self, biome, is_attacking):
+        base_strength = self.population * random.uniform(0.8, 1.2)
+
+        if biome == self.focus_territory:
+            base_strength *= 1.25
+
+        if not is_attacking:
+            base_strength *= terrain_data[biome].defense_bonus
+
+        if self.leader.trait == "Warlord" and is_attacking:
+            base_strength *= 1.15
+
+        return base_strength
+
+    def get_relation(self, other_code):
+        return self.diplomacy.get(other_code, "Neutral")
+
+    def set_relation(self, other_code, status):
+        self.diplomacy[other_code] = status
